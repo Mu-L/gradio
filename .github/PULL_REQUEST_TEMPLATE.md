@@ -1,18 +1,18 @@
-# Description
+## Description
 
-Please include: 
-* relevant motivation
-* a summary of the change 
-* which issue is fixed. 
-* any additional dependencies that are required for this change.
+Please include a concise summary, in clear English, of the changes in this pull request. If it closes an issue, please mention it here.
 
-Closes: # (issue)
+Closes: #(issue)
 
-# Checklist:
+## 🎯 PRs Should Target Issues
 
-- [ ] I have performed a self-review of my own code
-- [ ] My code follows the style guidelines of this project
-- [ ] I have commented my code in hard-to-understand areas
-- [ ] I have made corresponding changes to the documentation
-- [ ] I have added tests that prove my fix is effective or that my feature works
-- [ ] New and existing unit tests pass locally with my changes
+Before your create a PR, please check to see if there is [an existing issue](https://github.com/gradio-app/gradio/issues) for this change. If not, please create an issue before you create this PR, unless the fix is very small. 
+
+Not adhering to this guideline will result in the PR being closed. 
+
+## Testing and Formatting Your Code
+
+1. PRs will only be merged if tests pass on CI. We recommend at least running the backend tests locally, please set up [your Gradio environment locally](https://github.com/gradio-app/gradio/blob/main/CONTRIBUTING.md) and run the backed tests: `bash scripts/run_backend_tests.sh`
+
+2. Please run these bash scripts to automatically format your code: `bash scripts/format_backend.sh`, and (if you made any changes to non-Python files) `bash scripts/format_frontend.sh`
+  

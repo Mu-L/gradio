@@ -1,51 +1,74 @@
-[![CircleCI](https://circleci.com/gh/gradio-app/gradio.svg?style=svg)](https://circleci.com/gh/gradio-app/gradio)  [![PyPI version](https://badge.fury.io/py/gradio.svg)](https://badge.fury.io/py/gradio)  [![codecov](https://codecov.io/gh/gradio-app/gradio/branch/master/graph/badge.svg?token=NNVPX9KEGS)](https://codecov.io/gh/gradio-app/gradio) [![PyPI - Downloads](https://img.shields.io/pypi/dm/gradio)](https://pypi.org/project/gradio/) [![Twitter Follow](https://img.shields.io/twitter/follow/gradio.svg?style=social&label=Follow)](https://twitter.com/gradio)
+<div align="center">
+<a href="https://gradio.app">
+<img src="readme_files/gradio.svg" alt="gradio" width=350>
+</a>
+</div>
 
-#  Gradio: Build Machine Learning Web Apps — in Python
+<div align="center">
+<span>
+<a href="https://www.producthunt.com/posts/gradio-5-0?embed=true&utm_source=badge-featured&utm_medium=badge&utm_souce=badge-gradio&#0045;5&#0045;0" target="_blank"><img src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=501906&theme=light" alt="Gradio&#0032;5&#0046;0 - the&#0032;easiest&#0032;way&#0032;to&#0032;build&#0032;AI&#0032;web&#0032;apps | Product Hunt" style="width: 150px; height: 54px;" width="150" height="54" /></a>
+<a href="https://trendshift.io/repositories/2145" target="_blank"><img src="https://trendshift.io/api/badge/repositories/2145" alt="gradio-app%2Fgradio | Trendshift" style="width: 150px; height: 55px;" width="150" height="55"/></a>
+</span>
 
-Gradio (pronounced GRAY-dee-oh) is an open-source Python library that is used to build machine learning and data science demos and web applications. 
+[![gradio-backend](https://github.com/gradio-app/gradio/actions/workflows/test-python.yml/badge.svg)](https://github.com/gradio-app/gradio/actions/workflows/test-python.yml)
+[![gradio-ui](https://github.com/gradio-app/gradio/actions/workflows/tests-js.yml/badge.svg)](https://github.com/gradio-app/gradio/actions/workflows/tests-js.yml) 
+[![PyPI](https://img.shields.io/pypi/v/gradio)](https://pypi.org/project/gradio/)
+[![PyPI downloads](https://img.shields.io/pypi/dm/gradio)](https://pypi.org/project/gradio/)
+![Python version](https://img.shields.io/badge/python-3.10+-important)
+[![Twitter follow](https://img.shields.io/twitter/follow/gradio?style=social&label=follow)](https://twitter.com/gradio)
 
-With Gradio, you can quickly create a beautiful user interface around your machine learning models or data science workflow and let people "try it out" by dragging-and-dropping in their own images, pasting text, recording their own voice, and interacting with your demo, all through the browser.  
+[Website](https://gradio.app)
+| [Documentation](https://gradio.app/docs/)
+| [Guides](https://gradio.app/guides/)
+| [Getting Started](https://gradio.app/getting_started/)
+| [Examples](demo/)
 
-![Interface montage](website/homepage/src/assets/img/meta-image-2.png)
+</div>
 
-Gradio is useful for:
+<div align="center">
 
-* **Demoing** your machine learning models for clients / collaborators / users / students
+English | [中文](readme_files/zh-cn#readme)
 
-* **Deploying** your models quickly with automatic shareable links and getting feedback on model performance
+</div>
 
-* **Debugging** your model interactively during development using built-in manipulation and interpretation tools
+# Gradio: Build Machine Learning Web Apps — in Python
 
-**You can find an interactive version of the following Getting Started at [https://gradio.app/getting_started](https://gradio.app/getting_started).**
+$getting_started
 
-{% with code=code, demos=demos %}
-{% include "guides/getting_started.md" %}
-{% endwith %}
+## Questions?
 
-##  System Requirements:
+If you'd like to report a bug or have a feature request, please create an [issue on GitHub](https://github.com/gradio-app/gradio/issues/new/choose). For general questions about usage, we are available on [our Discord server](https://discord.com/invite/feTf9x3ZSB) and happy to help.
 
-Gradio requires Python `3.7+` and has been tested on the latest versions of Windows, MacOS, and various common Linux distributions (e.g. Ubuntu). For Python package requirements, please see the `setup.py` file.
+If you like Gradio, please leave us a ⭐ on GitHub!
 
-##  Contributing:
+## Open Source Stack
 
-If you would like to contribute and your contribution is small, you can directly open a pull request (PR). If you would like to contribute a larger feature, we recommend first creating an issue with a proposed design for discussion. Please see our [contributing guidelines](https://github.com/gradio-app/gradio/blob/master/CONTRIBUTING.md) for more info.
+Gradio is built on top of many wonderful open-source libraries!
 
-##  License:
+[<img src="readme_files/huggingface_mini.svg" alt="huggingface" height=40>](https://huggingface.co)
+[<img src="readme_files/python.svg" alt="python" height=40>](https://www.python.org)
+[<img src="readme_files/fastapi.svg" alt="fastapi" height=40>](https://fastapi.tiangolo.com)
+[<img src="readme_files/encode.svg" alt="encode" height=40>](https://www.encode.io)
+[<img src="readme_files/svelte.svg" alt="svelte" height=40>](https://svelte.dev)
+[<img src="readme_files/vite.svg" alt="vite" height=40>](https://vitejs.dev)
+[<img src="readme_files/pnpm.svg" alt="pnpm" height=40>](https://pnpm.io)
+[<img src="readme_files/tailwind.svg" alt="tailwind" height=40>](https://tailwindcss.com)
+[<img src="readme_files/storybook.svg" alt="storybook" height=40>](https://storybook.js.org/)
+[<img src="readme_files/chromatic.svg" alt="chromatic" height=40>](https://www.chromatic.com/)
 
-Gradio is licensed under the Apache License 2.0
+## License
 
+Gradio is licensed under the Apache License 2.0 found in the [LICENSE](LICENSE) file in the root directory of this repository.
 
-##  See more:
+## Citation
 
-You can find many more examples as well as more info on usage on our website: www.gradio.app
-
-See, also, the accompanying paper: ["Gradio: Hassle-Free Sharing and Testing of ML Models in the Wild"](https://arxiv.org/pdf/1906.02569.pdf), *ICML HILL 2019*, and please use the citation below.
+Also check out the paper _[Gradio: Hassle-Free Sharing and Testing of ML Models in the Wild](https://arxiv.org/abs/1906.02569), ICML HILL 2019_, and please cite it if you use Gradio in your work.
 
 ```
 @article{abid2019gradio,
-title={Gradio: Hassle-Free Sharing and Testing of ML Models in the Wild},
-author={Abid, Abubakar and Abdalla, Ali and Abid, Ali and Khan, Dawood and Alfozan, Abdulrahman and Zou, James},
-journal={arXiv preprint arXiv:1906.02569},
-year={2019}
+  title = {Gradio: Hassle-Free Sharing and Testing of ML Models in the Wild},
+  author = {Abid, Abubakar and Abdalla, Ali and Abid, Ali and Khan, Dawood and Alfozan, Abdulrahman and Zou, James},
+  journal = {arXiv preprint arXiv:1906.02569},
+  year = {2019},
 }
 ```
