@@ -2,10 +2,8 @@ import numpy as np
 
 import gradio as gr
 
-
 def transpose(matrix):
     return matrix.T
-
 
 demo = gr.Interface(
     transpose,
@@ -18,6 +16,7 @@ demo = gr.Interface(
         [np.random.randint(0, 10, (10, 3)).tolist()],
         [np.random.randint(0, 10, (10, 10)).tolist()],
     ],
+    cache_examples=False
 )
 
 if __name__ == "__main__":

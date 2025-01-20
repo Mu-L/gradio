@@ -1,10 +1,12 @@
-#!/bin/bash
-if [ -z "$(ls | grep CONTRIBUTING.md)" ]; then
-  echo "Please run the script from repo directory"
-  exit -1
-else
-  echo "Building the frontend"
-  cd ui
-  pnpm i --frozen-lockfile
-  pnpm build
-fi
+#!/bin/bash -eu
+
+cd "$(dirname ${0})/.."
+source scripts/helpers.sh
+
+pnpm_required
+
+python scripts/generate_theme.py
+
+echo "Building the frontend..."
+pnpm i --frozen-lockfile --ignore-scripts
+pnpm build
