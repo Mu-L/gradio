@@ -1,9 +1,7 @@
 import gradio as gr
 
-
 def filter_records(records, gender):
     return records[records["gender"] == gender]
-
 
 demo = gr.Interface(
     filter_records,
@@ -12,7 +10,7 @@ demo = gr.Interface(
             headers=["name", "age", "gender"],
             datatype=["str", "number", "str"],
             row_count=5,
-            col_count=(3, "fixed")
+            col_count=(3, "fixed"),
         ),
         gr.Dropdown(["M", "F", "O"]),
     ],
