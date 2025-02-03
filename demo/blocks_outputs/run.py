@@ -1,5 +1,24 @@
 import gradio as gr
 
+def make_markdown():
+    return [
+        [
+            "# hello again",
+            "Hello my name is frank, I am liking the small turtle you have there. It would be a shame if it went missing.",
+            '<img src="https://images.unsplash.com/photo-1574613362884-f79513a5128c?fit=crop&w=500&q=80"/>',
+        ],
+        [
+            "## hello again again",
+            "Hello my name is frank, I am liking the small turtle you have there. It would be a shame if it went missing.",
+            '<img src="https://images.unsplash.com/photo-1574613362884-f79513a5128c?fit=crop&w=500&q=80"/>',
+        ],
+        [
+            "### hello thrice",
+            "Hello my name is frank, I am liking the small turtle you have there. It would be a shame if it went missing.",
+            '<img src="https://images.unsplash.com/photo-1574613362884-f79513a5128c?fit=crop&w=500&q=80"/>',
+        ],
+    ]
+
 with gr.Blocks() as demo:
     with gr.Column():
         txt = gr.Textbox(label="Small Textbox", lines=1, show_label=False)
@@ -20,7 +39,6 @@ with gr.Blocks() as demo:
         file = gr.File(show_label=False)
         video = gr.Video(show_label=False)
         image = gr.Image(show_label=False)
-        ts = gr.Timeseries(show_label=False)
         df = gr.Dataframe(show_label=False)
         html = gr.HTML(show_label=False)
         json = gr.JSON(show_label=False)
@@ -43,7 +61,31 @@ with gr.Blocks() as demo:
         gr.Dataframe(
             interactive=True, headers=["One", "Two", "Three", "Four"], col_count=4
         )
-
+        df = gr.DataFrame(
+            [
+                [
+                    "# hello",
+                    "Hello my name is frank, I am liking the small turtle you have there. It would be a shame if it went missing.",
+                    '<img src="https://images.unsplash.com/photo-1574613362884-f79513a5128c?fit=crop&w=500&q=80"/>',
+                ],
+                [
+                    "## hello",
+                    "Hello my name is frank, I am liking the small turtle you have there. It would be a shame if it went missing.",
+                    '<img src="https://images.unsplash.com/photo-1574613362884-f79513a5128c?fit=crop&w=500&q=80"/>',
+                ],
+                [
+                    "### hello",
+                    "Hello my name is frank, I am liking the small turtle you have there. It would be a shame if it went missing.",
+                    '<img src="https://images.unsplash.com/photo-1574613362884-f79513a5128c?fit=crop&w=500&q=80"/>',
+                ],
+            ],
+            headers=["One", "Two", "Three"],
+            wrap=True,
+            datatype=["markdown", "markdown", "html"],
+            interactive=True,
+        )
+        btn = gr.Button("Run")
+        btn.click(fn=make_markdown, inputs=None, outputs=df)
 
 if __name__ == "__main__":
     demo.launch()

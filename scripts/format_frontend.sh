@@ -1,11 +1,11 @@
-#!/bin/bash
-if [ -z "$(ls | grep CONTRIBUTING.md)" ]; then
-  echo "Please run the script from repo directory"
-  exit -1
-else
-  echo "Formatting frontend with prettier, also type checking with TypeScript"
-  cd ui
-  pnpm i
-  pnpm format:write
-  pnpm ts:check
-fi
+#!/bin/bash -eu
+
+cd "$(dirname ${0})/.."
+source scripts/helpers.sh
+
+pnpm_required
+
+echo "Formatting the frontend... Also we'll do type checking with TypeScript."
+pnpm i
+pnpm format:write
+pnpm ts:check

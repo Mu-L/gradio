@@ -1,15 +1,24 @@
 from __future__ import annotations
 
+import contextlib
 import csv
 import datetime
-import io
 import json
 import os
+import re
+import time
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, List, Optional
+from collections.abc import Sequence
+from multiprocessing import Lock
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+from gradio_client import utils as client_utils
+from gradio_client.documentation import document
 
 import gradio as gr
-from gradio import encryptor, utils
+from gradio import utils, wasm_utils
+from gradio.events import LikeData
 
 if TYPE_CHECKING:
     from gradio.components import Component
@@ -21,23 +30,22 @@ class FlaggingCallback(ABC):
     """
 
     @abstractmethod
-    def setup(self, components: List[Component], flagging_dir: str):
+    def setup(self, components: Sequence[Component], flagging_dir: str):
         """
         This method should be overridden and ensure that everything is set up correctly for flag().
         This method gets called once at the beginning of the Interface.launch() method.
         Parameters:
         components: Set of components that will provide flagged data.
-        flagging_dir: A string, typically containing the path to the directory where the flagging file should be storied (provided as an argument to Interface.__init__()).
+        flagging_dir: A string, typically containing the path to the directory where the flagging file should be stored (provided as an argument to Interface.__init__()).
         """
         pass
 
     @abstractmethod
     def flag(
         self,
-        flag_data: List[Any],
-        flag_option: Optional[str] = None,
-        flag_index: Optional[int] = None,
-        username: Optional[str] = None,
+        flag_data: list[Any],
+        flag_option: str | None = None,
+        username: str | None = None,
     ) -> int:
         """
         This method should be overridden by the FlaggingCallback subclass and may contain optional additional arguments.
@@ -46,7 +54,6 @@ class FlaggingCallback(ABC):
         interface: The Interface object that is being used to launch the flagging interface.
         flag_data: The data to be flagged.
         flag_option (optional): In the case that flagging_options are provided, the flag option that is being used.
-        flag_index (optional): The index of the sample that is being flagged.
         username (optional): The username of the user that is flagging the data, if logged in.
         Returns:
         (int) The total number of samples that have been flagged.
@@ -54,288 +61,367 @@ class FlaggingCallback(ABC):
         pass
 
 
+@document()
 class SimpleCSVLogger(FlaggingCallback):
     """
-    A simple example implementation of the FlaggingCallback abstract class
-    provided for illustrative purposes.
+    A simplified implementation of the FlaggingCallback abstract class
+    provided for illustrative purposes.  Each flagged sample (both the input and output data)
+    is logged to a CSV file on the machine running the gradio app.
+    Example:
+        import gradio as gr
+        def image_classifier(inp):
+            return {'cat': 0.3, 'dog': 0.7}
+        demo = gr.Interface(fn=image_classifier, inputs="image", outputs="label",
+                            flagging_callback=SimpleCSVLogger())
     """
 
-    def setup(self, components: List[Component], flagging_dir: str):
+    def __init__(self):
+        pass
+
+    def setup(self, components: Sequence[Component], flagging_dir: str | Path):
         self.components = components
         self.flagging_dir = flagging_dir
         os.makedirs(flagging_dir, exist_ok=True)
 
     def flag(
         self,
-        flag_data: List[Any],
-        flag_option: Optional[str] = None,
-        flag_index: Optional[int] = None,
-        username: Optional[str] = None,
+        flag_data: list[Any],
+        flag_option: str | None = None,  # noqa: ARG002
+        username: str | None = None,  # noqa: ARG002
     ) -> int:
         flagging_dir = self.flagging_dir
-        log_filepath = os.path.join(flagging_dir, "log.csv")
+        log_filepath = Path(flagging_dir) / "log.csv"
 
         csv_data = []
-        for component, sample in zip(self.components, flag_data):
+        for component, sample in zip(self.components, flag_data, strict=False):
+            save_dir = Path(
+                flagging_dir
+            ) / client_utils.strip_invalid_filename_characters(component.label or "")
+            save_dir.mkdir(exist_ok=True)
             csv_data.append(
-                component.save_flagged(
-                    flagging_dir,
-                    component.label,
+                component.flag(
                     sample,
-                    None,
+                    save_dir,
                 )
             )
 
-        with open(log_filepath, "a", newline="") as csvfile:
-            writer = csv.writer(csvfile, quoting=csv.QUOTE_NONNUMERIC, quotechar="'")
-            writer.writerow(csv_data)
+        with open(log_filepath, "a", encoding="utf-8", newline="") as csvfile:
+            writer = csv.writer(csvfile)
+            writer.writerow(utils.sanitize_list_for_csv(csv_data))
 
-        with open(log_filepath, "r") as csvfile:
-            line_count = len([None for row in csv.reader(csvfile)]) - 1
+        with open(log_filepath, encoding="utf-8") as csvfile:
+            line_count = len(list(csv.reader(csvfile))) - 1
         return line_count
 
 
-class CSVLogger(FlaggingCallback):
+@document()
+class ClassicCSVLogger(FlaggingCallback):
     """
-    The default implementation of the FlaggingCallback abstract class.
-    Logs the input and output data to a CSV file. Supports encryption.
+    The classic implementation of the FlaggingCallback abstract class in gradio<5.0. Each flagged
+    sample (both the input and output data) is logged to a CSV file with headers on the machine running the gradio app.
+    Example:
+        import gradio as gr
+        def image_classifier(inp):
+            return {'cat': 0.3, 'dog': 0.7}
+        demo = gr.Interface(fn=image_classifier, inputs="image", outputs="label",
+                            flagging_callback=ClassicCSVLogger())
+    Guides: using-flagging
     """
+
+    def __init__(self, simplify_file_data: bool = True):
+        self.simplify_file_data = simplify_file_data
 
     def setup(
         self,
-        components: List[Component],
-        flagging_dir: str,
-        encryption_key: Optional[str] = None,
+        components: Sequence[Component],
+        flagging_dir: str | Path,
     ):
         self.components = components
         self.flagging_dir = flagging_dir
-        self.encryption_key = encryption_key
         os.makedirs(flagging_dir, exist_ok=True)
 
     def flag(
         self,
-        flag_data: List[Any],
-        flag_option: Optional[str] = None,
-        flag_index: Optional[int] = None,
-        username: Optional[str] = None,
+        flag_data: list[Any],
+        flag_option: str | None = None,
+        username: str | None = None,
     ) -> int:
         flagging_dir = self.flagging_dir
-        log_filepath = os.path.join(flagging_dir, "log.csv")
-        is_new = not os.path.exists(log_filepath)
+        log_filepath = Path(flagging_dir) / "log.csv"
+        is_new = not Path(log_filepath).exists()
+        headers = [
+            getattr(component, "label", None) or f"component {idx}"
+            for idx, component in enumerate(self.components)
+        ] + [
+            "flag",
+            "username",
+            "timestamp",
+        ]
 
-        if flag_index is None:
-            csv_data = []
-            for component, sample in zip(self.components, flag_data):
-                csv_data.append(
-                    component.save_flagged(
-                        flagging_dir,
-                        component.label,
-                        sample,
-                        self.encryption_key,
-                    )
+        csv_data = []
+        for idx, (component, sample) in enumerate(
+            zip(self.components, flag_data, strict=False)
+        ):
+            save_dir = Path(
+                flagging_dir
+            ) / client_utils.strip_invalid_filename_characters(
+                getattr(component, "label", None) or f"component {idx}"
+            )
+            if utils.is_prop_update(sample):
+                csv_data.append(str(sample))
+            else:
+                data = (
+                    component.flag(sample, flag_dir=save_dir)
                     if sample is not None
                     else ""
                 )
-            csv_data.append(flag_option if flag_option is not None else "")
-            csv_data.append(username if username is not None else "")
-            csv_data.append(str(datetime.datetime.now()))
+                if self.simplify_file_data:
+                    data = utils.simplify_file_data_in_str(data)
+                csv_data.append(data)
+        csv_data.append(flag_option)
+        csv_data.append(username if username is not None else "")
+        csv_data.append(str(datetime.datetime.now()))
+
+        with open(log_filepath, "a", newline="", encoding="utf-8") as csvfile:
+            writer = csv.writer(csvfile)
             if is_new:
-                headers = [component.label for component in self.components] + [
-                    "flag",
-                    "username",
-                    "timestamp",
-                ]
+                writer.writerow(utils.sanitize_list_for_csv(headers))
+            writer.writerow(utils.sanitize_list_for_csv(csv_data))
 
-        def replace_flag_at_index(file_content):
-            file_content = io.StringIO(file_content)
-            content = list(csv.reader(file_content))
-            header = content[0]
-            flag_col_index = header.index("flag")
-            content[flag_index][flag_col_index] = flag_option
-            output = io.StringIO()
-            writer = csv.writer(output, quoting=csv.QUOTE_NONNUMERIC, quotechar="'")
-            writer.writerows(content)
-            return output.getvalue()
-
-        if self.encryption_key:
-            output = io.StringIO()
-            if not is_new:
-                with open(log_filepath, "rb") as csvfile:
-                    encrypted_csv = csvfile.read()
-                    decrypted_csv = encryptor.decrypt(
-                        self.encryption_key, encrypted_csv
-                    )
-                    file_content = decrypted_csv.decode()
-                    if flag_index is not None:
-                        file_content = replace_flag_at_index(file_content)
-                    output.write(file_content)
-            writer = csv.writer(output, quoting=csv.QUOTE_NONNUMERIC, quotechar="'")
-            if flag_index is None:
-                if is_new:
-                    writer.writerow(headers)
-                writer.writerow(csv_data)
-            with open(log_filepath, "wb") as csvfile:
-                csvfile.write(
-                    encryptor.encrypt(self.encryption_key, output.getvalue().encode())
-                )
-        else:
-            if flag_index is None:
-                with open(log_filepath, "a", newline="") as csvfile:
-                    writer = csv.writer(
-                        csvfile, quoting=csv.QUOTE_NONNUMERIC, quotechar="'"
-                    )
-                    if is_new:
-                        writer.writerow(headers)
-                    writer.writerow(csv_data)
-            else:
-                with open(log_filepath) as csvfile:
-                    file_content = csvfile.read()
-                    file_content = replace_flag_at_index(file_content)
-                with open(
-                    log_filepath, "w", newline=""
-                ) as csvfile:  # newline parameter needed for Windows
-                    csvfile.write(file_content)
-        with open(log_filepath, "r") as csvfile:
-            line_count = len([None for row in csv.reader(csvfile)]) - 1
+        with open(log_filepath, encoding="utf-8") as csvfile:
+            line_count = len(list(csv.reader(csvfile))) - 1
         return line_count
 
 
-class HuggingFaceDatasetSaver(FlaggingCallback):
+@document()
+class CSVLogger(FlaggingCallback):
     """
-    A FlaggingCallback that saves flagged data to a HuggingFace dataset.
+    The default implementation of the FlaggingCallback abstract class in gradio>=5.0. Each flagged
+    sample (both the input and output data) is logged to a CSV file with headers on the machine running
+    the gradio app. Unlike ClassicCSVLogger, this implementation is concurrent-safe and it creates a new
+    dataset file every time the headers of the CSV (derived from the labels of the components) change. It also
+    only creates columns for "username" and "flag" if the flag_option and username are provided, respectively.
+
+    Example:
+        import gradio as gr
+        def image_classifier(inp):
+            return {'cat': 0.3, 'dog': 0.7}
+        demo = gr.Interface(fn=image_classifier, inputs="image", outputs="label",
+                            flagging_callback=CSVLogger())
+    Guides: using-flagging
     """
 
     def __init__(
         self,
-        hf_foken: str,
-        dataset_name: str,
-        organization: Optional[str] = None,
-        private: bool = False,
+        simplify_file_data: bool = True,
         verbose: bool = True,
+        dataset_file_name: str | None = None,
     ):
         """
-        Params:
-        hf_token (str): The token to use to access the huggingface API.
-        dataset_name (str): The name of the dataset to save the data to, e.g.
-            "image-classifier-1"
-        organization (str): The name of the organization to which to attach
-            the datasets. If None, the dataset attaches to the user only.
-        private (bool): If the dataset does not already exist, whether it
-            should be created as a private dataset or public. Private datasets
-            may require paid huggingface.co accounts
-        verbose (bool): Whether to print out the status of the dataset
-            creation.
+        Parameters:
+            simplify_file_data: If True, the file data will be simplified before being written to the CSV file. If CSVLogger is being used to cache examples, this is set to False to preserve the original FileData class
+            verbose: If True, prints messages to the console about the dataset file creation
+            dataset_file_name: The name of the dataset file to be created (should end in ".csv"). If None, the dataset file will be named "dataset1.csv" or the next available number.
         """
-        self.hf_foken = hf_foken
-        self.dataset_name = dataset_name
-        self.organization_name = organization
-        self.dataset_private = private
+        self.simplify_file_data = simplify_file_data
         self.verbose = verbose
+        self.dataset_file_name = dataset_file_name
+        self.lock = (
+            Lock() if not wasm_utils.IS_WASM else contextlib.nullcontext()
+        )  # The multiprocessing module doesn't work on Lite.
 
-    def setup(self, components: List[Component], flagging_dir: str):
-        """
-        Params:
-        flagging_dir (str): local directory where the dataset is cloned,
-        updated, and pushed from.
-        """
-        try:
-            import huggingface_hub
-        except (ImportError, ModuleNotFoundError):
-            raise ImportError(
-                "Package `huggingface_hub` not found is needed "
-                "for HuggingFaceDatasetSaver. Try 'pip install huggingface_hub'."
-            )
-        path_to_dataset_repo = huggingface_hub.create_repo(
-            name=self.dataset_name,
-            token=self.hf_foken,
-            private=self.dataset_private,
-            repo_type="dataset",
-            exist_ok=True,
-        )
-        self.path_to_dataset_repo = path_to_dataset_repo  # e.g. "https://huggingface.co/datasets/abidlabs/test-audio-10"
+    def setup(
+        self,
+        components: Sequence[Component],
+        flagging_dir: str | Path,
+    ):
         self.components = components
-        self.flagging_dir = flagging_dir
-        self.dataset_dir = os.path.join(flagging_dir, self.dataset_name)
-        self.repo = huggingface_hub.Repository(
-            local_dir=self.dataset_dir,
-            clone_from=path_to_dataset_repo,
-            use_auth_token=self.hf_foken,
-        )
-        self.repo.git_pull()
+        self.flagging_dir = Path(flagging_dir)
+        self.first_time = True
 
-        # Should filename be user-specified?
-        self.log_file = os.path.join(self.dataset_dir, "data.csv")
-        self.infos_file = os.path.join(self.dataset_dir, "dataset_infos.json")
+    def _create_dataset_file(self, additional_headers: list[str] | None = None):
+        os.makedirs(self.flagging_dir, exist_ok=True)
+
+        if additional_headers is None:
+            additional_headers = []
+        headers = (
+            [
+                getattr(component, "label", None) or f"component {idx}"
+                for idx, component in enumerate(self.components)
+            ]
+            + additional_headers
+            + [
+                "timestamp",
+            ]
+        )
+        headers = utils.sanitize_list_for_csv(headers)
+        dataset_files = list(Path(self.flagging_dir).glob("dataset*.csv"))
+
+        if self.dataset_file_name:
+            self.dataset_filepath = self.flagging_dir / self.dataset_file_name
+        elif dataset_files:
+            try:
+                latest_file = max(
+                    dataset_files, key=lambda f: int(re.findall(r"\d+", f.stem)[0])
+                )
+                latest_num = int(re.findall(r"\d+", latest_file.stem)[0])
+
+                with open(latest_file, newline="", encoding="utf-8") as csvfile:
+                    reader = csv.reader(csvfile)
+                    existing_headers = next(reader, None)
+
+                if existing_headers != headers:
+                    new_num = latest_num + 1
+                    self.dataset_filepath = self.flagging_dir / f"dataset{new_num}.csv"
+                else:
+                    self.dataset_filepath = latest_file
+            except Exception:
+                self.dataset_filepath = self.flagging_dir / "dataset1.csv"
+        else:
+            self.dataset_filepath = self.flagging_dir / "dataset1.csv"
+
+        if not Path(self.dataset_filepath).exists():
+            with open(
+                self.dataset_filepath, "w", newline="", encoding="utf-8"
+            ) as csvfile:
+                writer = csv.writer(csvfile)
+                writer.writerow(utils.sanitize_list_for_csv(headers))
+            if self.verbose:
+                print("Created dataset file at:", self.dataset_filepath)
+        elif self.verbose:
+            print("Using existing dataset file at:", self.dataset_filepath)
 
     def flag(
         self,
-        flag_data: List[Any],
-        flag_option: Optional[str] = None,
-        flag_index: Optional[int] = None,
-        username: Optional[str] = None,
+        flag_data: list[Any],
+        flag_option: str | None = None,
+        username: str | None = None,
     ) -> int:
-        is_new = not os.path.exists(self.log_file)
-        infos = {"flagged": {"features": {}}}
+        if self.first_time:
+            additional_headers = []
+            if flag_option is not None:
+                additional_headers.append("flag")
+            if username is not None:
+                additional_headers.append("username")
+            self._create_dataset_file(additional_headers=additional_headers)
+            self.first_time = False
 
-        with open(self.log_file, "a", newline="") as csvfile:
-            writer = csv.writer(csvfile)
-
-            # File previews for certain input and output types
-            file_preview_types = {
-                gr.inputs.Audio: "Audio",
-                gr.outputs.Audio: "Audio",
-                gr.inputs.Image: "Image",
-                gr.outputs.Image: "Image",
-            }
-
-            # Generate the headers and dataset_infos
-            if is_new:
-                headers = []
-
-                for component, sample in zip(self.components, flag_data):
-                    headers.append(component.label)
-                    headers.append(component.label)
-                    infos["flagged"]["features"][component.label] = {
-                        "dtype": "string",
-                        "_type": "Value",
-                    }
-                    if isinstance(component, tuple(file_preview_types)):
-                        headers.append(component.label + " file")
-                        for _component, _type in file_preview_types.items():
-                            if isinstance(component, _component):
-                                infos["flagged"]["features"][
-                                    component.label + " file"
-                                ] = {"_type": _type}
-                                break
-
-                headers.append("flag")
-                infos["flagged"]["features"]["flag"] = {
-                    "dtype": "string",
-                    "_type": "Value",
-                }
-
-                writer.writerow(headers)
-
-            # Generate the row corresponding to the flagged sample
-            csv_data = []
-            for component, sample in zip(self.components, flag_data):
-                filepath = component.save_flagged(
-                    self.dataset_dir, component.label, sample, None
+        csv_data = []
+        for idx, (component, sample) in enumerate(
+            zip(self.components, flag_data, strict=False)
+        ):
+            save_dir = (
+                self.flagging_dir
+                / client_utils.strip_invalid_filename_characters(
+                    getattr(component, "label", None) or f"component {idx}"
                 )
-                csv_data.append(filepath)
-                if isinstance(component, tuple(file_preview_types)):
-                    csv_data.append(
-                        "{}/resolve/main/{}".format(self.path_to_dataset_repo, filepath)
-                    )
-            csv_data.append(flag_option if flag_option is not None else "")
-            writer.writerow(csv_data)
+            )
+            if utils.is_prop_update(sample):
+                csv_data.append(str(sample))
+            else:
+                data = (
+                    component.flag(sample, flag_dir=save_dir)
+                    if sample is not None
+                    else ""
+                )
+                if self.simplify_file_data:
+                    data = utils.simplify_file_data_in_str(data)
+                csv_data.append(data)
 
-        if is_new:
-            json.dump(infos, open(self.infos_file, "w"))
+        if flag_option is not None:
+            csv_data.append(flag_option)
+        if username is not None:
+            csv_data.append(username)
+        csv_data.append(str(datetime.datetime.now()))
 
-        with open(self.log_file, "r") as csvfile:
-            line_count = len([None for row in csv.reader(csvfile)]) - 1
-
-        self.repo.push_to_hub(commit_message="Flagged sample #{}".format(line_count))
+        with self.lock:
+            with open(
+                self.dataset_filepath, "a", newline="", encoding="utf-8"
+            ) as csvfile:
+                writer = csv.writer(csvfile)
+                writer.writerow(utils.sanitize_list_for_csv(csv_data))
+            with open(self.dataset_filepath, encoding="utf-8") as csvfile:
+                line_count = len(list(csv.reader(csvfile))) - 1
 
         return line_count
+
+
+class ChatCSVLogger:
+    """
+    Flagging callback for chat conversations.
+    Flagged conversations and like/dislike reactions are logged to a CSV file on the machine running the gradio app.
+    """
+
+    def __init__(self):
+        pass
+
+    def setup(self, flagging_dir: str):
+        self.flagging_dir = flagging_dir
+        os.makedirs(flagging_dir, exist_ok=True)
+
+    def flag(
+        self,
+        like_data: LikeData,
+        messages: list,
+    ):
+        flagging_dir = self.flagging_dir
+        log_filepath = Path(flagging_dir) / "log.csv"
+        is_new = not Path(log_filepath).exists()
+
+        feedback = (
+            "Like"
+            if like_data.liked is True
+            else "Dislike"
+            if like_data.liked is False
+            else like_data.liked
+        )
+        csv_data = [
+            json.dumps(messages),
+            like_data.index,
+            feedback,
+            str(datetime.datetime.now()),
+        ]
+
+        with open(log_filepath, "a", encoding="utf-8", newline="") as csvfile:
+            if is_new:
+                writer = csv.writer(csvfile)
+                writer.writerow(["conversation", "index", "value", "flag", "timestamp"])
+            writer = csv.writer(csvfile)
+            writer.writerow(utils.sanitize_list_for_csv(csv_data))
+
+
+class FlagMethod:
+    """
+    Helper class that contains the flagging options and calls the flagging method. Also
+    provides visual feedback to the user when flag is clicked.
+    """
+
+    def __init__(
+        self,
+        flagging_callback: FlaggingCallback,
+        label: str,
+        value: str | None,
+        visual_feedback: bool = True,
+    ):
+        self.flagging_callback = flagging_callback
+        self.label = label
+        self.value = value
+        self.__name__ = "Flag"
+        self.visual_feedback = visual_feedback
+
+    def __call__(self, request: gr.Request, *flag_data):
+        try:
+            self.flagging_callback.flag(
+                list(flag_data), flag_option=self.value, username=request.username
+            )
+        except Exception as e:
+            print(f"Error while flagging: {e}")
+            if self.visual_feedback:
+                return "Error!"
+        if not self.visual_feedback:
+            return
+        time.sleep(0.8)  # to provide enough time for the user to observe button change
+        return self.reset()
+
+    def reset(self):
+        return gr.Button(value=self.label, interactive=True)
